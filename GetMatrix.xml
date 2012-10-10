@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+	<title>Get Connectivity Matrix</title>
+	<description>A tool to get the matrix</description>
+	<contributor>Adrien Kaiser</contributor>
+	<version>1.0</version>
+	<parameters>
+		<label>Inputs</label>
+		<description>Inputs of the program</description>
+		<file fileExtensions="csv">
+			<name>ConnecMapsFile</name>
+			<flag>f</flag>
+			<longflag>connecMapsFile</longflag>
+			<description>This csv file contains the paths to all the connectivity map files, corresponding to all the labels in the Label Map. The files will be all on the first line, separated by commas.</description>
+			<label>Connec Maps File</label>
+		</file>
+		<image>
+			<name>LabelMap</name>
+			<flag>l</flag>
+			<longflag>labelMap</longflag>
+			<description>Label map 3D image : 1 label for each voxel</description>
+			<label>Label Map</label>
+		</image>
+	</parameters>
+	<parameters>
+		<label>Outputs</label>
+		<description>Outputs for the program</description>
+		<file fileExtensions="txt">
+			<name>MatrixFile</name>
+			<flag>m</flag>
+			<longflag>matrixFile</longflag>
+			<description>The file that will contain the matrix</description>
+			<label>Matrix File</label>
+		</file>
+	</parameters>
+</executable>
+			
