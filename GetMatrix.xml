@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <executable>
 	<title>Get Connectivity Matrix</title>
-	<description>A tool to get the matrix</description>
+	<description>This tool computes the connectivity matrix using a label map. You can either use the connectivity maps corresponding to all of the labels in the label map or a tracts file containing the full brain tractography. The connectivity maps or the tractography have to be in the same space than the label map. If you give a tracts file and connectivity maps, the connectivity maps will be used. At the end of the process, a text file containing the IDs of all the labels in the way they are used in the matrix will be created in the same folder than the matrix : Matrix_Labels.txt.</description>
 	<contributor>Adrien Kaiser</contributor>
 	<version>1.0</version>
 	<parameters>
@@ -9,14 +9,32 @@
 		<description>Inputs of the program</description>
 		<file fileExtensions="csv">
 			<name>ConnecMapsFile</name>
-			<flag>f</flag>
 			<longflag>connecMapsFile</longflag>
-			<description>This csv file contains the paths to all the connectivity map files, corresponding to all the labels in the Label Map. The files will be all on the first line, separated by commas.</description>
+			<description>This csv file contains the paths to all the connectivity map files, corresponding to all the labels in the Label Map.</description>
 			<label>Connec Maps File</label>
 		</file>
+		<integer>
+			<name>ConnecMapsFileIndex</name>
+			<longflag>connecMapsFileIndex</longflag>
+			<description>The index of the column containing the paths to the connectivity maps (1 for the first column)</description>
+			<label>Connec Maps File Index</label>
+			<default>1</default>
+		</integer>
+		<boolean>
+			<name>isCostMap</name>
+			<longflag>isCostMap</longflag>
+			<description>Enable if the given Connectivity maps are cost maps: the values will be inverted.</description>
+			<label>is Cost Map</label>
+			<default>false</default>
+		</boolean>
+		<string-vector>
+			<name>TractsFiles</name>
+			<longflag>tractsFiles</longflag>
+			<description>Vector with vtk files containing the tract files. Separate each file with a comma.</description>
+			<label>Tracts Files</label>
+		</string-vector>
 		<image>
 			<name>LabelMap</name>
-			<flag>l</flag>
 			<longflag>labelMap</longflag>
 			<description>Label map 3D image : 1 label for each voxel</description>
 			<label>Label Map</label>
@@ -24,14 +42,37 @@
 	</parameters>
 	<parameters>
 		<label>Outputs</label>
-		<description>Outputs for the program</description>
+		<description>Outputs of the program</description>
 		<file fileExtensions="txt">
 			<name>MatrixFile</name>
-			<flag>m</flag>
 			<longflag>matrixFile</longflag>
 			<description>The file that will contain the matrix</description>
 			<label>Matrix File</label>
 		</file>
+	</parameters>
+	<parameters>
+		<label>Options</label>
+		<description>Options for the program</description>
+		<string-enumeration>
+			<name>MatrixMetric</name>
+			<longflag>matrixMetric</longflag>
+			<description>The way to compute the elements of the matrix</description>
+			<label>Matrix Metric</label>
+			<element>Mean</element>
+			<element>Minimum</element>
+			<element>Maximum</element>
+			<element>Median</element>
+			<element>Quantile10</element>
+			<element>Quantile90</element>
+			<default>Mean</default>
+		</string-enumeration>
+		<boolean>
+			<name>useRegionBoundary</name>
+			<longflag>useRegionBoundary</longflag>
+			<description>For a given region, the connectivity will be computed only using the voxels on the boundary of each region. Used only with connectivity maps, not with tracts files.</description>
+			<label>use Region Boundary</label>
+			<default>false</default>
+		</boolean>
 	</parameters>
 </executable>
 			
