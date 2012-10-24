@@ -1,7 +1,7 @@
 /*
 GetMatrix --connecMapsFile ../ConnecMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --isCostMap --useRegionBoundary
 
-GetMatrix --tractsFiles /home/akaiser/Networking/ukf/tracts.vtk,/home/akaiser/Networking/ukf/tractsSecondTensor.vtk --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Matrix.txt --matrixMetric Mean --useRegionBoundary
+GetMatrix --tractsFiles /home/akaiser/Networking/ukf/tracts.vtk,/home/akaiser/Networking/ukf/tractsSecondTensor.vtk --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Matrix.txt --FA ~/Networking/from_Utah/Data/b1000_fa.nrrd
 */
 
 /* std classes */
@@ -28,6 +28,7 @@ GetMatrix --tractsFiles /home/akaiser/Networking/ukf/tracts.vtk,/home/akaiser/Ne
 #include <vtkPolyData.h>
 #include <vtkSmartPointer.h>
 #include <vtkCell.h>
+#include <vtkPoints.h>
 
   /////////////////////////////////////////
  //          LABEL STRUCTURE            //
@@ -51,13 +52,13 @@ typedef itk::VTKImageIO 				ImageIOType;;
   /////////////////////////////////////////
  //            TEST FILES               //
 /////////////////////////////////////////
-
 int testFiles (	std::string ConnecMapsFile,
 		int ConnecMapsFileIndex,
 		std::string LabelMap,
 		std::string MatrixFile,
-		std::vector< std::string > & TractsFiles) // reference to the tracts files vector so we can pop_back the files that are not ok (not readable or not vtk)
-// csv file ConnecMapsFile, map image LabelMap, output file MatrixFile, vtk tracts files vector TractsFiles : returns -1 if problem, 0 if no connectivity maps (use tracts), otherwise returns the nb of connec maps found
+		std::vector< std::string > & TractsFiles, // reference to the tracts files vector so we can pop_back the files that are not ok (not readable or not vtk)
+		std::string & FA) // reference to the FA image so we can empty it if error -> empty = not used
+// csv file ConnecMapsFile, map image LabelMap, output file MatrixFile, vtk tracts files vector TractsFiles, image FA : returns -1 if problem, 0 if no connectivity maps (use tracts), otherwise returns the nb of connec maps found
 {
 /* Test if all files are here */
 	if( ConnecMapsFile.empty() && TractsFiles.empty() ) // TractsFiles is a vector of string
@@ -86,9 +87,9 @@ int testFiles (	std::string ConnecMapsFile,
 		std::cout<<"=> ABORT <="<<std::endl;
 		return -1;
 	}
-	if( ConnecMapsFile.empty() ) // if tracts files used, remove the ones that are bad
+	if( ConnecMapsFile.empty() ) // if tracts files used, remove the ones that are bad and test the FA
 	{
-		std::vector< int > filesToRemoveFromVector; // files that are bad
+		std::vector< int > filesToRemoveFromVector; // indexes of files that are bad
 		for(unsigned int i=0;i<TractsFiles.size();i++) // for all the tracts files
 		{
 			if( access(TractsFiles[i].c_str(), R_OK) != 0 ) // Test if the file is readable => unistd::access() returns 0 if R(read)_OK
@@ -109,6 +110,12 @@ int testFiles (	std::string ConnecMapsFile,
 			std::cout<<"| None of the given tracts files can be processed."<<std::endl;
 			std::cout<<"=> ABORT <="<<std::endl;
 			return -1;
+		}
+
+		if( !FA.empty() && access(FA.c_str(), R_OK) != 0 ) // Test if the file is readable => unistd::access() returns 0 if R(read)_OK
+		{
+			std::cout<<"| The FA image is not readable : \'"<< FA <<"\', it will not be used."<<std::endl;
+			FA=""; // empty the string so it is not used
 		}
 	}
 	if( access(LabelMap.c_str(), R_OK) != 0 ) // Test if the file is readable => unistd::access() returns 0 if R(read)_OK
@@ -334,6 +341,7 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 								int ConnecMapsFileIndex, 
 								NeighborhoodIteratorType LabelIter,
 								bool useRegionBoundary,
+								bool useOnlyReachedVoxels,
 								std::string MatrixMetric,
 								bool isCostMap) // returns empty vector if fail, matrix if ok
 { 
@@ -412,13 +420,21 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 			// Get the values in the image
 			int Labelvalue = LabelIter.GetCenterPixel(); // !! LabelIter is a NeighborhoodIteratorType
 			double connecValue = ConnecIter.Get();
-// if isCostMap, invert HERE
 
 			if( Labelvalue!=0 && connecValue>=0 ) // take into account only the values that belong to a label and the positive values (negative values are not supposed to be in region of interests)
 			{
+				// If cost map
+				if( isCostMap ) connecValue = 1 / ( 1 + connecValue ) ; //done here to avoid connecValue = -1 and /0
+
+				// test Boundary
 				bool boundaryOK = true ;
-				if(useRegionBoundary) if( ! voxelBelongToBoundary( LabelIter ) ) boundaryOK = false;
-				if( boundaryOK )
+				if( useRegionBoundary ) if( ! voxelBelongToBoundary( LabelIter ) ) boundaryOK = false;
+
+				// test reached voxel
+				bool ReachedOK = true ;
+				if( useOnlyReachedVoxels ) if( connecValue < 0.0001 ) ReachedOK = false; // voxels which connectivity is under 0.0001 are supposed not reached
+
+				if( boundaryOK && ReachedOK )
 				{
 //DEBUG : INDEXES OF SELECTED VOXELS//	std::cout<<"Voxel : "<< LabelIter.GetIndex()[0] <<":" << LabelIter.GetIndex()[1] <<":" << LabelIter.GetIndex()[2] <<std::endl;
 
@@ -460,9 +476,6 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 		else if(MatrixMetric == "Quantile10") Row = GetQuantiles(Labels,0.1); // Returns the quantile10 connectivity in each label
 		else if(MatrixMetric == "Quantile90") Row = GetQuantiles(Labels,0.9); // Returns the quantile90 connectivity in each label
 
-		// If cost map
-		if( isCostMap ) for(unsigned int j=0;j<Row.size();j++) Row[j] = 1 / ( 1 + Row[j] ) ;
-
 		ConnecMatrix.push_back( Row );
 	}
 
@@ -477,7 +490,7 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 								ImageType::Pointer LabelMapImage,
 								NeighborhoodIteratorType LabelIter,
 								std::vector< std::string > TractsFiles,
-								std::string MatrixMetric) // returns empty vector if fail, matrix if ok
+								std::string FA) // returns empty vector if fail, matrix if ok
 {
 /* Exit Fail Vector */
 	std::vector< std::vector< double > > EmptyVector;
@@ -490,6 +503,26 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 
 	ConnecMatrix.resize(NbLabels);
 	for(int i=0;i<NbLabels;i++) ConnecMatrix[i].resize(NbLabels);
+
+/* Open FA image with ITK */
+	ImageType::Pointer FAimage; // is here to avoid compilation error (variable missing)
+	if( !FA.empty() )
+	{
+		ReaderType::Pointer FAreader = ReaderType::New();
+		try
+		{
+			FAreader->SetFileName( FA );
+			FAreader->Update();
+			FAimage = FAreader->GetOutput();
+		}
+		catch( itk::ExceptionObject exception )
+		{
+			std::cerr << exception << std::endl ;
+			return EmptyVector;
+		}
+		std::cout<<"| Successfully loaded FA image : \'"<< FA <<"\'."<<std::endl;
+
+	}
 
 /* For all the tract files */
 	int NbFibersInMatrix=0; // contains the nb of fibers in matrix, so the fibers linking 2 "non 0" regions
@@ -531,7 +564,8 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 				std::cout<<"\r| ["<< i+1 <<"/"<< NbTracts << "] fibers read";
 
 				// Get the RAS (Right, Anterior, Superior) coordinates of the begin and end point of the tract
-				double * FiberBounds = PolyData->GetCell( i )->GetBounds(); // (xmin,xmax,ymin,ymax,zmin,zmax)
+				vtkSmartPointer<vtkCell> Cell = PolyData->GetCell( i );
+				double * FiberBounds = Cell->GetBounds(); // (xmin,xmax,ymin,ymax,zmin,zmax)
 // std::cout<<"("<< FiberBounds[0] <<" , "<< FiberBounds[2] <<" , "<< FiberBounds[4] <<") -> ("<< FiberBounds[1] <<" , "<< FiberBounds[3] <<" , "<< FiberBounds[5] <<")"<<std::endl; // info display : begin and end points 
 
 				// Convert the RAS coordinates into index coordinates (ITK: physical to index) : bool TransformPhysicalPointToIndex (const Point< TCoordRep, VImageDimension > &point, IndexType &index) const 
@@ -552,8 +586,8 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 
 				if( !BeginIsInside || !EndIsInside )
 				{
-					if(!BeginIsInside) std::cout<<"| This fiber begins outside the label map: physical coordinates = ("<< BeginVoxelIndex[0] <<" , "<< BeginVoxelIndex[1] <<" , "<< BeginVoxelIndex[2] <<")"<<std::endl;
-					if(!EndIsInside) std::cout<<"| This fiber ends outside the label map: physical coordinates = ("<< EndVoxelIndex[0] <<" , "<< EndVoxelIndex[1] <<" , "<< EndVoxelIndex[2] <<")"<<std::endl;
+					if(!BeginIsInside) std::cout<<"| This fiber begins outside the label map: physical coordinates = ("<< PhysicalBeginPoint[0] <<" , "<< PhysicalBeginPoint[1] <<" , "<< PhysicalBeginPoint[2] <<")"<<std::endl;
+					if(!EndIsInside) std::cout<<"| This fiber ends outside the label map: physical coordinates = ("<< PhysicalEndPoint[0] <<" , "<< PhysicalEndPoint[1] <<" , "<< PhysicalEndPoint[2] <<")"<<std::endl;
 					std::cout<<"| This fiber will not be taken into account."<<std::endl;
 				}
 				else
@@ -565,7 +599,7 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 					LabelIter.SetLocation( EndVoxelIndex );
 					int EndLabel=LabelIter.GetCenterPixel();
 
-// std::cout<<BeginLabel<<" -> "<< EndLabel<<std::endl;
+//std::cout<<BeginLabel<<" -> "<< EndLabel<<std::endl;
 
 					// Add a number in the matrix case
 					if( BeginLabel!=0 && EndLabel!=0)
@@ -573,11 +607,36 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 						int BeginMatrixIndex = std::distance( Labels.begin(), std::find(Labels.begin(), Labels.end(), BeginLabel) ); // distance to convert std::iterator to int
 						int EndMatrixIndex = std::distance( Labels.begin(), std::find(Labels.begin(), Labels.end(), EndLabel) );
 
-						ConnecMatrix[ BeginMatrixIndex ][ EndMatrixIndex ] = ConnecMatrix[ BeginMatrixIndex ][ EndMatrixIndex ] + 1 ; // add 1 for each tract that links the 2 regions
+						if( FA.empty() ) ConnecMatrix[ BeginMatrixIndex ][ EndMatrixIndex ] = ConnecMatrix[ BeginMatrixIndex ][ EndMatrixIndex ] + 1 ; // add 1 for each tract that links the 2 regions 
+						else // compute the mean FA along the tract
+						{
+							double FAsum = 0;
+							vtkSmartPointer<vtkPoints> CellPoints = Cell->GetPoints();
+							int NbPoints = CellPoints->GetNumberOfPoints();
+
+							for(int j=0;j<NbPoints;j++)
+							{
+								ImageType::PointType PhysicalPoint =  CellPoints->GetPoint( j ); // GetPoint() returns a double[3] with the PHYSICAL points
+								ImageType::IndexType PointIndex;
+
+								bool PointIsInside = FAimage -> TransformPhysicalPointToIndex( PhysicalPoint, PointIndex ); // true if index inside the image, false if outside
+								if(!PointIsInside)  std::cout<<"| This point is outside the FA image: physical coordinates = ("<< PhysicalPoint[0] <<" , "<< PhysicalPoint[1] <<" , "<< PhysicalPoint[2] <<")"<<std::endl;
+								else
+								{
+									IteratorImageType FAimageIter ( FAimage , FAimage->GetLargestPossibleRegion() );
+									FAimageIter.SetIndex( PointIndex );
+									double FAvalue = FAimageIter.Get();
+									FAsum = FAsum + FAvalue ;
+								}
+							}
+
+							ConnecMatrix[ BeginMatrixIndex ][ EndMatrixIndex ] = ConnecMatrix[ BeginMatrixIndex ][ EndMatrixIndex ] + FAsum/NbPoints ; // add the mean FA for each tract that links the 2 regions
+						}
 
 						NbFibersInMatrix ++ ; // contains the nb of fibers in matrix, so the fibers linking 2 "non 0" regions
 					}
-				}
+				}// else of if( !BeginIsInside || !EndIsInside )
+
 			} // for(int i=0;i<NbTracts;i++) // for all the tracts
 
 			std::cout<< std::endl; // for the number of fibers read
@@ -612,9 +671,11 @@ int main (int argc, char *argv[])
 csv file	ConnecMapsFile
 int		ConnecMapsFileIndex
 map image	LabelMap
+image		FA
 output file	MatrixFile
 std::string	MatrixMetric = "Mean|Minimum|Maximum|Median|Quantile10|Quantile90"
 bool		useRegionBoundary
+bool		useOnlyReachedVoxels
 bool		isCostMap
 vtk file	TractsFiles
 */
@@ -625,7 +686,7 @@ vtk file	TractsFiles
 		std::cout<<"| The output Matrix file is missing. It will be created in the current work directory as \'./ConnectivityMatrix.txt\'."<<std::endl;
 		MatrixFile = "./ConnectivityMatrix.txt";
 	}
-	int NbConnectMaps = testFiles(ConnecMapsFile, ConnecMapsFileIndex, LabelMap, MatrixFile, TractsFiles); // returns -1 if problem, 0 if no connectivity maps (use tracts), otherwise returns the nb of connec maps found
+	int NbConnectMaps = testFiles(ConnecMapsFile, ConnecMapsFileIndex, LabelMap, MatrixFile, TractsFiles, FA); // returns -1 if problem, 0 if no connectivity maps (use tracts), otherwise returns the nb of connec maps found
 	if(NbConnectMaps==-1) return -1; // info display in the function
 
 /* Display Infos */
@@ -659,9 +720,9 @@ vtk file	TractsFiles
 /* Get the matrix */ // functions return empty vector if fail, connec matrix if OK
 	std::vector< std::vector< double > > ConnecMatrix;
 
-	if( !ConnecMapsFile.empty() ) ConnecMatrix = ComputeMatrixWithConnec ( LabelMap, NbConnectMaps, ConnecMapsFile, ConnecMapsFileIndex, LabelIter, useRegionBoundary, MatrixMetric, isCostMap );
+	if( !ConnecMapsFile.empty() ) ConnecMatrix = ComputeMatrixWithConnec ( LabelMap, NbConnectMaps, ConnecMapsFile, ConnecMapsFileIndex, LabelIter, useRegionBoundary, useOnlyReachedVoxels, MatrixMetric, isCostMap );
 
-	else ConnecMatrix = ComputeMatrixWithTracts ( LabelMap, LabelMapImage, LabelIter, TractsFiles, MatrixMetric );
+	else ConnecMatrix = ComputeMatrixWithTracts ( LabelMap, LabelMapImage, LabelIter, TractsFiles, FA );
 
 	if( ConnecMatrix.empty() ) return -1;
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <executable>
 	<title>Get Connectivity Matrix</title>
-	<description>This tool computes the connectivity matrix using a label map. You can either use the connectivity maps corresponding to all of the labels in the label map or a tracts file containing the full brain tractography. The connectivity maps or the tractography have to be in the same space than the label map. If you give a tracts file and connectivity maps, the connectivity maps will be used. At the end of the process, a text file containing the IDs of all the labels in the way they are used in the matrix will be created in the same folder than the matrix : Matrix_Labels.txt.</description>
+	<description>This tool computes the connectivity matrix using a label map. You can either use the connectivity maps corresponding to all of the labels in the label map or a tracts file containing the full brain tractography. The connectivity maps or the tractography and the FA have to be in the same space than the label map. If you give a tracts file and connectivity maps, the connectivity maps will be used. At the end of the process, a text file containing the IDs of all the labels in the way they are used in the matrix will be created in the same folder than the matrix : Matrix_Labels.txt.</description>
 	<contributor>Adrien Kaiser</contributor>
 	<version>1.0</version>
 	<parameters>
@@ -39,6 +39,12 @@
 			<description>Label map 3D image : 1 label for each voxel</description>
 			<label>Label Map</label>
 		</image>
+		<image>
+			<name>FA</name>
+			<longflag>FA</longflag>
+			<description>If you use the tractography, you can give the FA image and the contribution of each tract to the connectivity will be the mean FA along the tract.</description>
+			<label>FA</label>
+		</image>
 	</parameters>
 	<parameters>
 		<label>Outputs</label>
@@ -71,6 +77,13 @@
 			<longflag>useRegionBoundary</longflag>
 			<description>For a given region, the connectivity will be computed only using the voxels on the boundary of each region. Used only with connectivity maps, not with tracts files.</description>
 			<label>use Region Boundary</label>
+			<default>false</default>
+		</boolean>
+		<boolean>
+			<name>useOnlyReachedVoxels</name>
+			<longflag>useOnlyReachedVoxels</longflag>
+			<description>For a given set of voxels in a region, only the voxels that are reached (i.e. their connectivity is not 0) will be taken into account.</description>
+			<label>use Only Reached Voxels</label>
 			<default>false</default>
 		</boolean>
 	</parameters>
