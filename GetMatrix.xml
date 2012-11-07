@@ -86,6 +86,13 @@
 			<label>use Only Reached Voxels</label>
 			<default>false</default>
 		</boolean>
+		<boolean>
+			<name>normalizeFSLConnec</name>
+			<longflag>normalizeFSLConnec</longflag>
+			<description>If the connectivity maps were generated with FSL, this option will normalize the values by the number of tracts generated, given in the file 'waytotal' in the FSL output folder.</description>
+			<label>Normalize FSL Connec</label>
+			<default>false</default>
+		</boolean>
 	</parameters>
 </executable>
 			

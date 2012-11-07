@@ -1,5 +1,7 @@
 /*
-GetMatrix --connecMapsFile ../ConnecMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --isCostMap --useRegionBoundary
+GetMatrix --connecMapsFile ../ConnecMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Connec_Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --useRegionBoundary --normalizeFSLConnec
+
+GetMatrix --connecMapsFile ../CostMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Cost_Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --isCostMap --useRegionBoundary
 
 GetMatrix --tractsFiles /home/akaiser/Networking/ukf/tracts.vtk,/home/akaiser/Networking/ukf/tractsSecondTensor.vtk --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Matrix.txt --FA ~/Networking/from_Utah/Data/b1000_fa.nrrd
 */
@@ -343,7 +345,8 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 								bool useRegionBoundary,
 								bool useOnlyReachedVoxels,
 								std::string MatrixMetric,
-								bool isCostMap) // returns empty vector if fail, matrix if ok
+								bool isCostMap,
+								bool normalizeFSLConnec) // returns empty vector if fail, matrix if ok
 { 
 /* Exit Fail */
 	std::vector< std::vector< double > > EmptyVector;
@@ -414,9 +417,8 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 		IteratorImageType ConnecIter ( ConnecMapImage , ConnecMapImage->GetLargestPossibleRegion() );
 
 		// Get the total number of tracts used in FSL (the 'waytotal' file created by PROBTRACKX gives this nb => normalization
-		bool FSL=true;
 		double FSLNbTracts;
-		if(FSL)
+		if(normalizeFSLConnec)
 		{
 			// Open the 'waytotal' file
 			std::string FSLwaytotalFile = itksys::SystemTools::GetFilenamePath( ConnecMap ) + "/waytotal";
@@ -440,7 +442,7 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 			{
 				// Value processing
 				if( isCostMap ) connecValue = 1 / ( 1 + connecValue ) ; //done here to avoid connecValue = -1 and /0
-				else if(FSL && FSLNbTracts!=0) connecValue = connecValue / FSLNbTracts ;
+				else if( normalizeFSLConnec && FSLNbTracts!=0 ) connecValue = connecValue / FSLNbTracts ;
 
 				// test Boundary
 				bool boundaryOK = true ;
@@ -495,11 +497,16 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 		ConnecMatrix.push_back( Row );
 	}
 
+	// Diagonal (modify to experiment)
 	for(unsigned int i=0;i<ConnecMatrix.size();i++)
 	{
 		for(unsigned int j=0;j<ConnecMatrix.size();j++)
 		{
-			if( i == j ) ConnecMatrix[i][j] = 1 ; // ones on the diagonal
+			if( i == j )
+			{
+				if( isCostMap ) ConnecMatrix[i][j] = 1 ; // ones on the diagonal
+				else ConnecMatrix[i][j] = 0 ; // zeros on the diagonal
+			}
 		}
 	}
 
@@ -701,6 +708,7 @@ std::string	MatrixMetric = "Mean|Minimum|Maximum|Median|Quantile10|Quantile90"
 bool		useRegionBoundary
 bool		useOnlyReachedVoxels
 bool		isCostMap
+bool		normalizeFSLConnec
 vtk file	TractsFiles
 */
 
@@ -744,8 +752,7 @@ vtk file	TractsFiles
 /* Get the matrix */ // functions return empty vector if fail, connec matrix if OK
 	std::vector< std::vector< double > > ConnecMatrix;
 
-	if( !ConnecMapsFile.empty() ) ConnecMatrix = ComputeMatrixWithConnec ( LabelMap, NbConnectMaps, ConnecMapsFile, ConnecMapsFileIndex, LabelIter, useRegionBoundary, useOnlyReachedVoxels, MatrixMetric, isCostMap );
-
+	if( !ConnecMapsFile.empty() ) ConnecMatrix = ComputeMatrixWithConnec ( LabelMap, NbConnectMaps, ConnecMapsFile, ConnecMapsFileIndex, LabelIter, useRegionBoundary, useOnlyReachedVoxels, MatrixMetric, isCostMap, normalizeFSLConnec );
 	else ConnecMatrix = ComputeMatrixWithTracts ( LabelMap, LabelMapImage, LabelIter, TractsFiles, FA );
 
 	if( ConnecMatrix.empty() ) return -1;
