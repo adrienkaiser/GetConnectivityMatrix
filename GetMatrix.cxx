@@ -386,9 +386,9 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 		Labels.clear();
 
 		// Get the path to the connect map
-		std::getline ( CSVfileStream, ConnecMap );
-		std::stringstream strstr(ConnecMap);
-		for(int j=0;j<ConnecMapsFileIndex;j++) std::getline(strstr, ConnecMap, ',');
+		std::getline ( CSVfileStream, ConnecMap ); // ConnecMap if the line
+		std::stringstream strstr(ConnecMap); // ConnecMap if the line
+		for(int j=0;j<ConnecMapsFileIndex;j++) std::getline(strstr, ConnecMap, ','); // splitting the line by ','
 
 		// Test if connect map and Label map have the same size
 		if( CompareSize(ConnecMap, LabelMap)== 0 ) // returns 1 if same size, 0 if different
@@ -410,11 +410,26 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 			std::cerr << exception << std::endl ;
 			return EmptyVector;
 		}
-		std::cout<<"| ["<< i+1 <<"\t/ "<< NbConnectMaps <<"\t] Successfully loaded image : \'"<< ConnecMap <<"\'."<<std::endl;
+		std::cout<<"| ["<< i+1 <<"\t/ "<< NbConnectMaps <<"\t] Successfully loaded image : \'"<< ConnecMap <<"\'";
 		IteratorImageType ConnecIter ( ConnecMapImage , ConnecMapImage->GetLargestPossibleRegion() );
 
+		// Get the total number of tracts used in FSL (the 'waytotal' file created by PROBTRACKX gives this nb => normalization
+		bool FSL=true;
+		double FSLNbTracts;
+		if(FSL)
+		{
+			// Open the 'waytotal' file
+			std::string FSLwaytotalFile = itksys::SystemTools::GetFilenamePath( ConnecMap ) + "/waytotal";
+			std::ifstream waytotalFileStream (FSLwaytotalFile.c_str() , std::ios::in);  // opening in reading
+
+			// Get the number
+			waytotalFileStream>>FSLNbTracts;
+
+			std::cout<<" ("<<FSLNbTracts<<" tracts used to compute this connectivity map)."<<std::endl;
+		}
+		else std::cout<<"."<<std::endl; //display
+
 		// Build the vector by getting all the points in the image
-		
 		for( LabelIter.GoToBegin(), ConnecIter.GoToBegin() ; !LabelIter.IsAtEnd() ; ++LabelIter, ++ConnecIter)
 		{
 			// Get the values in the image
@@ -423,8 +438,9 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 
 			if( Labelvalue!=0 && connecValue>=0 ) // take into account only the values that belong to a label and the positive values (negative values are not supposed to be in region of interests)
 			{
-				// If cost map
+				// Value processing
 				if( isCostMap ) connecValue = 1 / ( 1 + connecValue ) ; //done here to avoid connecValue = -1 and /0
+				else if(FSL && FSLNbTracts!=0) connecValue = connecValue / FSLNbTracts ;
 
 				// test Boundary
 				bool boundaryOK = true ;
@@ -477,6 +493,14 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 		else if(MatrixMetric == "Quantile90") Row = GetQuantiles(Labels,0.9); // Returns the quantile90 connectivity in each label
 
 		ConnecMatrix.push_back( Row );
+	}
+
+	for(unsigned int i=0;i<ConnecMatrix.size();i++)
+	{
+		for(unsigned int j=0;j<ConnecMatrix.size();j++)
+		{
+			if( i == j ) ConnecMatrix[i][j] = 1 ; // ones on the diagonal
+		}
 	}
 
 	return ConnecMatrix; // EXIT_OK
