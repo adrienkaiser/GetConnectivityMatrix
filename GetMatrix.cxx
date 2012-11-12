@@ -1,9 +1,9 @@
 /*
-GetMatrix --connecMapsFile ../ConnecMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Connec_Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --useRegionBoundary --normalizeFSLConnec
+GetMatrix --connecMapsFile ../ConnecMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../FSL_Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --useRegionBoundary --normalizeFSLConnec
 
 GetMatrix --connecMapsFile ../CostMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Cost_Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --isCostMap --useRegionBoundary
 
-GetMatrix --tractsFiles /home/akaiser/Networking/ukf/tracts.vtk,/home/akaiser/Networking/ukf/tractsSecondTensor.vtk --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Matrix.txt --FA ~/Networking/from_Utah/Data/b1000_fa.nrrd
+GetMatrix --tractsFiles /home/akaiser/Networking/ukf/tracts.vtk,/home/akaiser/Networking/ukf/tractsSecondTensor.vtk --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Tracts_Matrix.txt --FA ~/Networking/from_Utah/Data/b1000_fa.nrrd
 */
 
 /* std classes */
@@ -383,6 +383,9 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 	ReaderType::Pointer ConnecMapReader = ReaderType::New();
 
 /* Main FOR loop */
+	double MinConnec=10000000;
+	double MaxConnec=0;
+
 	for(int i=0;i<NbConnectMaps;i++)
 	{
 		// Clear the vector
@@ -416,7 +419,7 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 		std::cout<<"| ["<< i+1 <<"\t/ "<< NbConnectMaps <<"\t] Successfully loaded image : \'"<< ConnecMap <<"\'";
 		IteratorImageType ConnecIter ( ConnecMapImage , ConnecMapImage->GetLargestPossibleRegion() );
 
-		// Get the total number of tracts used in FSL (the 'waytotal' file created by PROBTRACKX gives this nb => normalization
+		// Get the total number of tracts used in FSL (the 'waytotal' file created by PROBTRACKX gives this nb) => normalization
 		double FSLNbTracts;
 		if(normalizeFSLConnec)
 		{
@@ -427,7 +430,7 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 			// Get the number
 			waytotalFileStream>>FSLNbTracts;
 
-			std::cout<<" ("<<FSLNbTracts<<" tracts used to compute this connectivity map)."<<std::endl;
+			std::cout<<" \t("<<FSLNbTracts<<" \ttracts used to compute this connectivity map)."<<std::endl;
 		}
 		else std::cout<<"."<<std::endl; //display
 
@@ -441,7 +444,7 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 			if( Labelvalue!=0 && connecValue>=0 ) // take into account only the values that belong to a label and the positive values (negative values are not supposed to be in region of interests)
 			{
 				// Value processing
-				if( isCostMap ) connecValue = 1 / ( 1 + connecValue ) ; //done here to avoid connecValue = -1 and /0
+				if( isCostMap ) connecValue = 1 / ( 1 + connecValue ) ; // done here to avoid connecValue = -1 and /0
 				else if( normalizeFSLConnec && FSLNbTracts!=0 ) connecValue = connecValue / FSLNbTracts ;
 
 				// test Boundary
@@ -495,18 +498,27 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 		else if(MatrixMetric == "Quantile90") Row = GetQuantiles(Labels,0.9); // Returns the quantile90 connectivity in each label
 
 		ConnecMatrix.push_back( Row );
+
+		// Get the minimum and maximum values in the matrix
+		for(unsigned int j=0;j<Row.size();j++)
+		{
+			if( i!=(int)j) // values on the diag are not real connec values (usually 0)
+			{
+				 if( Row[j] < MinConnec ) MinConnec = Row[j];
+				 if( Row[j] > MaxConnec ) MaxConnec = Row[j];
+			}
+		}
 	}
 
-	// Diagonal (modify to experiment)
+	// Display min max
+	std::cout<<"| The range of the connectivy values in the matrix is: "<<MinConnec<<" -> "<<MaxConnec<<std::endl;
+
+	// Minimum value on the diagonal -> allow the diag value to be in the range of all values and not completely different
 	for(unsigned int i=0;i<ConnecMatrix.size();i++)
 	{
 		for(unsigned int j=0;j<ConnecMatrix.size();j++)
 		{
-			if( i == j )
-			{
-				if( isCostMap ) ConnecMatrix[i][j] = 1 ; // ones on the diagonal
-				else ConnecMatrix[i][j] = 0 ; // zeros on the diagonal
-			}
+			if( i == j ) ConnecMatrix[i][j] = MinConnec ;
 		}
 	}
 
@@ -559,7 +571,7 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 	int NbFibersInMatrix=0; // contains the nb of fibers in matrix, so the fibers linking 2 "non 0" regions
 
 	if( TractsFiles.size() >= 2 ) std::cout<<"| "<< TractsFiles.size() << " tracts files will be processed"<<std::endl;
-	else std::cout<<"| 1 tracts file will be processed"<<std::endl;
+	else std::cout<<"| 1 tracts file will be processed"<<std::endl; // for the 's' in the end of 'file'
 
 	for(unsigned int tf=0;tf<TractsFiles.size();tf++)
 	{
@@ -643,7 +655,7 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 						{
 							double FAsum = 0;
 							vtkSmartPointer<vtkPoints> CellPoints = Cell->GetPoints();
-							int NbPoints = CellPoints->GetNumberOfPoints();
+							int NbPoints = CellPoints->GetNumberOfPoints(); // nb of points in the fiber
 
 							for(int j=0;j<NbPoints;j++)
 							{
@@ -678,14 +690,33 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 
 	std::cout<< "| "<< NbFibersInMatrix << " fibers used to build the matrix (the others begin or end outside of the regions)."<<std::endl;
 
-/* Normalize and return matrix */
+/* Normalize and Get the minimum and maximum values in the matrix */
+	double MinConnec=10000000;
+	double MaxConnec=0;
 	for(unsigned int i=0;i<ConnecMatrix.size();i++)
 	{
 		for(unsigned int j=0;j<ConnecMatrix.size();j++)
 		{
-			if( i==j ) ConnecMatrix[i][j] = 1; // 1s on the diagonal (regions are perfectly connected to themselves)
-			else ConnecMatrix[i][j] = ConnecMatrix[i][j] / NbFibersInMatrix ;
+			if( i!=j) // values on the diag are not real connec values
+			{
+				ConnecMatrix[i][j] = ConnecMatrix[i][j] / NbFibersInMatrix ;
+
+				// Threshold
+				double threshold=50;
+				if( FA.empty() ) threshold=0.01344;
+				if( ConnecMatrix[i][j] > threshold ) ConnecMatrix[i][j]=threshold;
+
+				if( ConnecMatrix[i][j] < MinConnec ) MinConnec = ConnecMatrix[i][j];
+				if( ConnecMatrix[i][j] > MaxConnec ) MaxConnec = ConnecMatrix[i][j];
+			}
 		}
+	}
+	std::cout<<"| The range of the connectivy values in the matrix is: "<<MinConnec<<" -> "<<MaxConnec<<std::endl;
+
+/* Diagonal values */
+	for(unsigned int i=0;i<ConnecMatrix.size();i++)
+	{
+		for(unsigned int j=0;j<ConnecMatrix.size();j++) if( i==j ) ConnecMatrix[i][j] = MinConnec;
 	}
 
 	return ConnecMatrix; // EXIT_OK
