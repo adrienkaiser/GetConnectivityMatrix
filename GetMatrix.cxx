@@ -1,9 +1,11 @@
 /*
-GetMatrix --connecMapsFile ../ConnecMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../FSL_Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --useRegionBoundary --normalizeFSLConnec
+GetMatrix --connecMapsFile ../ConnecMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled_noWM.nrrd --matrixFile ../FSL_Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --useRegionBoundary --normalizeFSLConnec
 
-GetMatrix --connecMapsFile ../CostMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Cost_Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --isCostMap --useRegionBoundary
+GetMatrix --connecMapsFile ../CostMaps.csv --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled_noWM.nrrd --matrixFile ../Cost_Matrix.txt --matrixMetric Mean --connecMapsFileIndex 1 --isCostMap --useRegionBoundary
 
-GetMatrix --tractsFiles /home/akaiser/Networking/ukf/tracts.vtk,/home/akaiser/Networking/ukf/tractsSecondTensor.vtk --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled.nrrd --matrixFile ../Tracts_Matrix.txt --FA ~/Networking/from_Utah/Data/b1000_fa.nrrd
+GetMatrix --tractsFiles /home/akaiser/Networking/ukf/tracts.vtk,/home/akaiser/Networking/ukf/tractsSecondTensor.vtk --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled_noWM.nrrd --matrixFile ../Tracts_Matrix.txt --FA ~/Networking/from_Utah/Data/b1000_fa.nrrd
+
+GetMatrix --tractsFiles /home/akaiser/Networking/ukf/testWMmask1/tracts.vtk,/home/akaiser/Networking/ukf/testWMmask1/tractsSecondTensor.vtk --labelMap /home/akaiser/Networking/Freesurfer/TestPenelope/subjects/Penelope/mri/aparc+aseg_resampled_noWM.nrrd --matrixFile ../Tracts_Matrix_WMdilated.txt --FA ~/Networking/from_Utah/Data/b1000_fa.nrrd
 */
 
 /* std classes */
@@ -49,7 +51,29 @@ typedef itk::Image < double , 3 > 			ImageType; //itk type for image
 typedef itk::ImageFileReader <ImageType> 		ReaderType; //itk reader class to open an image
 typedef itk::ImageRegionIterator< ImageType > 		IteratorImageType;
 typedef itk::ConstNeighborhoodIterator< ImageType > 	NeighborhoodIteratorType;
-typedef itk::VTKImageIO 				ImageIOType;;
+typedef itk::VTKImageIO 				ImageIOType;
+
+  /////////////////////////////////////////
+ //           OPEN ITK IMAGE            //
+/////////////////////////////////////////
+ImageType::Pointer OpenITKimage (std::string ImagePath)
+{
+	ImageType::Pointer itkImage;
+	try
+	{
+		ReaderType::Pointer reader=ReaderType::New();
+		reader->SetFileName( ImagePath );
+		reader->Update();
+		itkImage = reader->GetOutput();
+	}
+	catch( itk::ExceptionObject exception )
+	{
+		std::cerr << exception << std::endl ;
+		return NULL;
+	}
+
+	return itkImage;
+}
 
   /////////////////////////////////////////
  //            TEST FILES               //
@@ -127,6 +151,7 @@ int testFiles (	std::string ConnecMapsFile,
 		return -1;
 	}
 	std::string MatrixFileFolder = itksys::SystemTools::GetParentDirectory( MatrixFile.c_str() );
+	if ( MatrixFileFolder.empty() ) MatrixFileFolder=".";
 	if( access(MatrixFileFolder.c_str(), W_OK) != 0 ) // Test if the folder is writable => unistd::access() returns 0 if W(write)_OK
 	{
 		std::cout<<"| The containing folder given for the output Matrix file is not writable : \'"<< MatrixFileFolder <<"\'."<<std::endl;
@@ -180,20 +205,9 @@ std::vector< int > GetLabels(std::string LabelMap) // returns empty vector if fa
 	std::vector< int > LabelsVector; // contains all the labels already found : NO duplicate
 
 /* Open the Label Map */
-	ImageType::Pointer LabelMapImage;
-	try
-	{
-		ReaderType::Pointer reader=ReaderType::New();
-		reader->SetFileName( LabelMap );
-		reader->Update();
-		LabelMapImage = reader->GetOutput();
-	}
-	catch( itk::ExceptionObject exception )
-	{
-		std::cerr << exception << std::endl ;
-		return LabelsVector ; // it is empty at this point
-	}
-	std::cout<<"| Successfully loaded image to find labels: \'"<< LabelMap <<"\'."<<std::endl;
+	ImageType::Pointer LabelMapImage = OpenITKimage(LabelMap);
+	if ( LabelMapImage ) std::cout<<"| Successfully loaded image to find labels: \'"<< LabelMap <<"\'."<<std::endl; //if !=NULL
+	else return LabelsVector; // empty at this point
 
 /* Main Loop : test all the voxels and count labels */
 	IteratorImageType LabelIter ( LabelMapImage , LabelMapImage->GetLargestPossibleRegion() );
@@ -378,10 +392,6 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 
 	std::vector< std::vector< double > > ConnecMatrix;
 
-/* Connect Maps ITK variables */
-	ImageType::Pointer ConnecMapImage;
-	ReaderType::Pointer ConnecMapReader = ReaderType::New();
-
 /* Main FOR loop */
 	double MinConnec=10000000;
 	double MaxConnec=0;
@@ -405,18 +415,10 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 		}
 
 		// Open the connectivity map with ITK
-		try
-		{
-			ConnecMapReader->SetFileName( ConnecMap );
-			ConnecMapReader->Update();
-			ConnecMapImage = ConnecMapReader->GetOutput();
-		}
-		catch( itk::ExceptionObject exception )
-		{
-			std::cerr << exception << std::endl ;
-			return EmptyVector;
-		}
-		std::cout<<"| ["<< i+1 <<"\t/ "<< NbConnectMaps <<"\t] Successfully loaded image : \'"<< ConnecMap <<"\'";
+		ImageType::Pointer ConnecMapImage = OpenITKimage(ConnecMap);
+		if ( ConnecMapImage ) std::cout<<"| ["<< i+1 <<"\t/ "<< NbConnectMaps <<"\t] Successfully loaded image : \'"<< ConnecMap <<"\'"; //if !=NULL
+		else return EmptyVector;
+		
 		IteratorImageType ConnecIter ( ConnecMapImage , ConnecMapImage->GetLargestPossibleRegion() );
 
 		// Get the total number of tracts used in FSL (the 'waytotal' file created by PROBTRACKX gives this nb) => normalization
@@ -513,12 +515,13 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
 	// Display min max
 	std::cout<<"| The range of the connectivy values in the matrix is: "<<MinConnec<<" -> "<<MaxConnec<<std::endl;
 
-	// Minimum value on the diagonal -> allow the diag value to be in the range of all values and not completely different
+	// Normalize values
 	for(unsigned int i=0;i<ConnecMatrix.size();i++)
 	{
 		for(unsigned int j=0;j<ConnecMatrix.size();j++)
 		{
-			if( i == j ) ConnecMatrix[i][j] = MinConnec ;
+			if( i == j ) ConnecMatrix[i][j] = MinConnec ; // Minimum value on the diagonal -> allow the diag value to be in the range of all values and not completely different
+			ConnecMatrix[i][j] = ( ConnecMatrix[i][j] - MinConnec ) / ( MaxConnec - MinConnec ) ; // normalize the values between 0 and 1
 		}
 	}
 
@@ -528,6 +531,59 @@ std::vector< std::vector< double > > ComputeMatrixWithConnec (	std::string Label
   /////////////////////////////////////////
  //         MATRIX WITH TRACTS          //
 /////////////////////////////////////////
+
+ImageType::Pointer ImageLPStoRAS (ImageType::Pointer Image)
+{
+/* LPS to RAS = flip x and y axis + change origin : x=x+Nx , y=y+Ny
+Nx, Ny = nb of voxels on x and y axis
+(x)    (-1  0  0 Nx )   (x)
+(y) =  ( 0 -1  0 Ny ) x (y)
+(z)    ( 0  0  1  0 )   (z)
+(1)ras ( 0  0  0  1 )   (1)lps
+
+    { Xras = Xlps + Nx
+<=> { Yras = Ylps + Ny
+    { Zras = Zlps
+
+=> get the values to add to the origin : Nx and Ny :
+
+N1, N2 = nb of voxels on 2 1st directions | D1,2,3 = directions | spx,y,z = spacings
+(Ox)    (Ox)     (spx 0  0 )   (D1x D2x D3x)   (N1)
+(Oy) =  (Oy)  +  ( 0 spy 0 ) x (D1y D2y D3y) x (N2)
+(Oz)ras (Oz)lps  ( 0  0 spz)   (D1z D2z D3z)   (0 )
+
+    { Oxras = Oxlps + spx * (D1x.N1 + D2x.N2)
+<=> { Oyras = Oylps + spy * (D1y.N1 + D2y.N2)
+    { Ozras = Ozlps + 0
+
+    { Oxras = Oxlps + Nx, with Nx = spx * (D1x.N1 + D2x.N2)
+<=> { Oyras = Oylps + Ny, with Ny = spy * (D1y.N1 + D2y.N2)
+    { Ozras = Ozlps + 0
+*/
+	ImageType::SizeType size = Image->GetLargestPossibleRegion().GetSize(); // get N1 and N2
+	ImageType::SpacingType spacing = Image->GetSpacing(); // get spacing
+	ImageType::DirectionType Direction = Image->GetDirection(); // Direction[row][col]
+	ImageType::PointType Origin = Image->GetOrigin();
+
+	double Nx = spacing[0] * (Direction[0][0] * size[0] + Direction[0][1] * size[1]);
+	double Ny = spacing[1] * (Direction[1][0] * size[0] + Direction[1][1] * size[1]);
+
+	// change origin : x=x+Nx , y=y+Ny, with Nx and Ny in real values, not index
+	Origin[0] = Origin[0] + Nx;
+	Origin[1] = Origin[1] + Ny;
+	Image->SetOrigin( Origin );
+
+	// flip 2first axis : change 2 first columns of direction matrix
+	Direction[0][0] = -1 * Direction[0][0];
+	Direction[1][0] = -1 * Direction[1][0];
+	Direction[2][0] = -1 * Direction[2][0];
+	Direction[0][1] = -1 * Direction[0][1];
+	Direction[1][1] = -1 * Direction[1][1];
+	Direction[2][1] = -1 * Direction[2][1];
+	Image->SetDirection( Direction );
+
+	return Image;
+}
 
 std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelMap,
 								ImageType::Pointer LabelMapImage,
@@ -551,20 +607,11 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 	ImageType::Pointer FAimage; // is here to avoid compilation error (variable missing)
 	if( !FA.empty() )
 	{
-		ReaderType::Pointer FAreader = ReaderType::New();
-		try
-		{
-			FAreader->SetFileName( FA );
-			FAreader->Update();
-			FAimage = FAreader->GetOutput();
-		}
-		catch( itk::ExceptionObject exception )
-		{
-			std::cerr << exception << std::endl ;
-			return EmptyVector;
-		}
-		std::cout<<"| Successfully loaded FA image : \'"<< FA <<"\'."<<std::endl;
+		FAimage = OpenITKimage(FA);
+		if ( FAimage ) std::cout<<"| Successfully loaded FA image : \'"<< FA <<"\'."<<std::endl; //if !=NULL
+		else return EmptyVector; // empty at this point
 
+		FAimage = ImageLPStoRAS( FAimage );
 	}
 
 /* For all the tract files */
@@ -629,9 +676,9 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 
 				if( !BeginIsInside || !EndIsInside )
 				{
-					if(!BeginIsInside) std::cout<<"| This fiber begins outside the label map: physical coordinates = ("<< PhysicalBeginPoint[0] <<" , "<< PhysicalBeginPoint[1] <<" , "<< PhysicalBeginPoint[2] <<")"<<std::endl;
-					if(!EndIsInside) std::cout<<"| This fiber ends outside the label map: physical coordinates = ("<< PhysicalEndPoint[0] <<" , "<< PhysicalEndPoint[1] <<" , "<< PhysicalEndPoint[2] <<")"<<std::endl;
-					std::cout<<"| This fiber will not be taken into account."<<std::endl;
+					if(!BeginIsInside) std::cout<<" : This fiber begins outside the label map: physical coordinates = ("<< PhysicalBeginPoint[0] <<" , "<< PhysicalBeginPoint[1] <<" , "<< PhysicalBeginPoint[2] <<").";
+					if(!EndIsInside) std::cout<<" : This fiber ends outside the label map: physical coordinates = ("<< PhysicalEndPoint[0] <<" , "<< PhysicalEndPoint[1] <<" , "<< PhysicalEndPoint[2] <<").";
+					std::cout<<" It will not be taken into account."<<std::endl;
 				}
 				else
 				{
@@ -713,10 +760,14 @@ std::vector< std::vector< double > > ComputeMatrixWithTracts(	std::string LabelM
 	}
 	std::cout<<"| The range of the connectivy values in the matrix is: "<<MinConnec<<" -> "<<MaxConnec<<std::endl;
 
-/* Diagonal values */
+/* Normalize */
 	for(unsigned int i=0;i<ConnecMatrix.size();i++)
 	{
-		for(unsigned int j=0;j<ConnecMatrix.size();j++) if( i==j ) ConnecMatrix[i][j] = MinConnec;
+		for(unsigned int j=0;j<ConnecMatrix.size();j++)
+		{
+			if( i==j ) ConnecMatrix[i][j] = MinConnec; // min on the diagonal
+			ConnecMatrix[i][j] = ( ConnecMatrix[i][j] - MinConnec ) / ( MaxConnec - MinConnec ) ; // normalize the values between 0 and 1
+		}
 	}
 
 	return ConnecMatrix; // EXIT_OK
@@ -761,21 +812,14 @@ vtk file	TractsFiles
 	}
 
 /* Open the Label Map with ITK */
-	ImageType::Pointer LabelMapImage;
-	try
-	{
-		ReaderType::Pointer LabelMapReader=ReaderType::New();
-		LabelMapReader->SetFileName( LabelMap );
-		LabelMapReader->Update();
-		LabelMapImage = LabelMapReader->GetOutput();
-	}
-	catch( itk::ExceptionObject exception )
-	{
-		std::cerr << exception << std::endl ;
-		return -1 ;
-	}
-	std::cout<<"| Successfully loaded image to compute matrix: \'"<< LabelMap <<"\'."<<std::endl;
+	ImageType::Pointer LabelMapImage = OpenITKimage(LabelMap);
+	if ( LabelMapImage ) std::cout<<"| Successfully loaded image to compute matrix: \'"<< LabelMap <<"\'."<<std::endl; //if !=NULL
+	else return -1; // empty at this point
 
+	// If tracts used, convert label map image coordinate system from LPS (nrrd, itk) to RAS (vtk) to compare with the tracts points
+	if( ConnecMapsFile.empty() ) LabelMapImage = ImageLPStoRAS( LabelMapImage ); // if using tracts
+
+	// Neighborhood iterator for label map
 	NeighborhoodIteratorType::RadiusType Neighborhoodradius;
 	Neighborhoodradius.Fill(1); // block neighborhood 
 	NeighborhoodIteratorType LabelIter ( Neighborhoodradius, LabelMapImage , LabelMapImage->GetLargestPossibleRegion() );
