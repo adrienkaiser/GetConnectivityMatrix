@@ -62,16 +62,21 @@
 		<string-enumeration>
 			<name>MatrixMetric</name>
 			<longflag>matrixMetric</longflag>
-			<description>The way to compute the elements of the matrix</description>
+			<description>The way to compute the elements of the matrix. If quantile, please give a quantile value.</description>
 			<label>Matrix Metric</label>
 			<element>Mean</element>
 			<element>Minimum</element>
 			<element>Maximum</element>
-			<element>Median</element>
-			<element>Quantile10</element>
-			<element>Quantile90</element>
+			<element>Quantile</element>
 			<default>Mean</default>
 		</string-enumeration>
+		<double>
+			<name>Quantile</name>
+			<longflag>quantile</longflag>
+			<description>The quantile value to use. The default value is the median (0.5).</description>
+			<label>Quantile</label>
+			<default>0.5</default>
+		</double>
 		<boolean>
 			<name>useRegionBoundary</name>
 			<longflag>useRegionBoundary</longflag>
